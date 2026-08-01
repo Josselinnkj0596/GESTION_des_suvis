@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BizTrack — Gestion d'activités & Suivi des revenus</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            blue: '#1E3A8A',     /* Bleu foncé (Confiance, Stabilité) */
+                            green: '#10B981',    /* Vert (Revenus, Croissance) */
+                            orange: '#F59E0B',   /* Orange (Dépenses, Alertes) */
+                            red: '#EF4444'       /* Rouge (Alertes critiques, suppressions) */
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- SUPABASE CDN LIBRARY -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SEPARATED DATABASE CONNECTOR -->
+    <script src="js/db.js"></script>
+</head>
+<body class="h-full text-slate-800 transition-colors duration-200">
+
+    <!-- APP CONTROLLER CONTAINER -->
+    <div id="app" class="h-full flex flex-col">
+        <!-- Views are dynamically injected here -->
+    </div>
+
+    <!-- MAIN APP SCRIPT -->
+    <script>
+        // Global UI State
+        let currentUser = null; 
+        let currentPeriod = 'this-month'; // today, this-week, this-month, this-year
+        let theme = localStorage.getItem('biztrack_theme') || 'light';
+        let charts = {}; // references to Chart.js instances
+
+        // Helper to check and pre-initialize local fallback DB if needed
+        function seedLocalDataIfRequired() {
+            if (!localStorage.getItem('biztrack_db_initialized')) {
+                const initialDB = {
+                    clients: [
+                        { code: "1111", name: "Jean-Pierre Kouadio", pin: "1111", currency: "FCFA (XOF)", createdAt: "2026-01-15" },
+                        { code: "2222", name: "Amina Touré", pin: "2222", currency: "EUR", createdAt: "2026-02-10" }
+                    ],
+                    activities: [
+                        { id: 'act_comm_1111', clientId: '1111', name: 'Commerce', icon: 'shopping-bag', color: '#1E3A8A', desc: "Vente d'œufs et boutique de vêtements" },
+                        { id: 'act_serv_1111', clientId: '1111', name: 'Services', icon: 'laptop', color: '#10B981', desc: "Prestations graphiques et vidéo" }
+                    ],
+                    categories: [
+                        { id: 'cat_comm_1_1111', activityId: 'act_comm_1111', clientId: '1111', name: "Vente d'œufs" },
+                        { id: 'cat_comm_2_1111', activityId: 'act_comm_1111', clientId: '1111', name: "Boutique de vêtements" },
+                        { id: 'cat_serv_1_1111', activityId: 'act_serv_1111', clientId: '1111', name: "Infographie" },
+                        { id: 'cat_serv_2_1111', activityId: 'act_serv_1111', clientId: '1111', name: "Montage vidéo" }
+                    ],
+                    products: [
+                        { id: 'prod_1_1111', categoryId: 'cat_comm_1_1111', clientId: '1111', name: "Plateau de 30 œufs" },
+                        { id: 'prod_2_1111', categoryId: 'cat_comm_1_1111', clientId: '1111', name: "Demi-plateau" },
+                        { id: 'prod_4_1111', categoryId: 'cat_comm_2_1111', clientId: '1111', name: "Robe d'été" },
+                        { id: 'prod_6_1111', categoryId: 'cat_serv_1_1111', clientId: '1111', name: "Création de Logo" },
+                        { id: 'prod_7_1111', categoryId: 'cat_serv_1_1111', clientId: '1111', name: "Affiche Publicitaire" },
+                        { id: 'prod_8_1111', categoryId: 'cat_serv_2_1111', clientId: '1111', name: "Montage Reels / TikTok" }
+                    ],
+                    sales: [
+                        { id: 's_1', clientId: '1111', activityId: 'act_comm_1111', categoryId: 'cat_comm_1_1111', productId: 'prod_1_1111', date: '2026-07-29', quantity: 3, unitPrice: 2500, total: 7500, clientName: 'Boutique Flora', paymentMethod: 'Mobile Money', observation: 'Vente matinale' },
+                        { id: 's_2', clientId: '1111', activityId: 'act_serv_1111', categoryId: 'cat_serv_1_1111', productId: 'prod_6_1111', date: '2026-07-29', quantity: 1, unitPrice: 35000, total: 35000, clientName: 'E-Shop Sarl', paymentMethod: 'Espèces', observation: 'Logo livré et validé' },
+                        { id: 's_3', clientId: '1111', activityId: 'act_comm_1111', categoryId: 'cat_comm_1_1111', productId: 'prod_2_1111', date: '2026-07-28', quantity: 5, unitPrice: 1300, total: 6500, clientName: 'Koffi', paymentMethod: 'Espèces', observation: '' },
+                        { id: 's_4', clientId: '1111', activityId: 'act_comm_1111', categoryId: 'cat_comm_2_1111', productId: 'prod_4_1111', date: '2026-07-28', quantity: 2, unitPrice: 15000, total: 30000, clientName: 'Mariam', paymentMethod: 'Carte Bancaire', observation: 'Soldes' },
+                        { id: 's_5', clientId: '1111', activityId: 'act_serv_1111', categoryId: 'cat_serv_2_1111', productId: 'prod_8_1111', date: '2026-07-26', quantity: 4, unitPrice: 12000, total: 48000, clientName: 'TikToker John', paymentMethod: 'Mobile Money', observation: 'Série de 4 vidéos courtes' }
+                    ],
+                    expenses: [
+                        { id: 'e_1', clientId: '1111', date: '2026-07-29', amount: 5000, category: 'Internet', observation: 'Forfait mensuel fibre' },
+                        { id: 'e_2', clientId: '1111', date: '2026-07-27', amount: 15000, category: 'Achat', observation: 'Achat cartons d\'œufs vides' },
+                        { id: 'e_3', clientId: '1111', date: '2026-07-20', amount: 8000, category: 'Carburant', observation: 'Plein de la moto de livraison' }
+                    ]
+                };
+                localStorage.setItem('biztrack_db', JSON.stringify(initialDB));
+                localStorage.setItem('biztrack_db_initialized', 'true');
+            }
+        }
+
+        // --- THEME ---
+        function toggleTheme() {
+            theme = theme === 'light' ? 'dark' : 'light';
+            localStorage.setItem('biztrack_theme', theme);
+            applyTheme();
+        }
+
+        function applyTheme() {
+            const html = document.documentElement;
+            if (theme === 'dark') {
+                html.classList.add('dark');
+            } else {
+                html.classList.remove('dark');
+            }
+        }
+
+        // --- CORE VIEW SWITCHER ---
+        function setView(htmlContent) {
+            document.getElementById('app').innerHTML = htmlContent;
+            lucide.createIcons();
+            applyTheme();
+        }
+
+        // --- AUTH ---
+        async function runLogin(code, pin) {
+            const errDiv = document.getElementById('loginError');
+            errDiv.classList.add('hidden');
+
+            const res = await window.BizTrackDB.login(code, pin);
+            if (res.success) {
+                currentUser = res.user;
+                localStorage.setItem('biztrack_current_user', JSON.stringify(currentUser));
+                if (currentUser.role === 'admin') {
+                    showAdminPanel();
+                } else {
+                    const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+                    if (clientInfo.activities.length === 0) {
+                        showWizardPanel();
+                    } else {
+                        showDashboard();
+                    }
+                }
+            } else {
+                errDiv.innerText = res.message;
+                errDiv.classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() {
+            currentUser = null;
+            localStorage.removeItem('biztrack_current_user');
+            showLoginScreen();
+        }
+
+        // --- UTILS ---
+        function formatCurrency(amount, currencyStr) {
+            const currencySymbol = currencyStr.split(' ')[0] || currencyStr;
+            return new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(amount) + ' ' + currencySymbol;
+        }
+
+        function filterByPeriod(dataArray, period, dateField = 'date') {
+            const todayStr = '2026-07-29';
+            const today = new Date(todayStr);
+            
+            return dataArray.filter(item => {
+                if (!item[dateField]) return false;
+                const itemDate = new Date(item[dateField]);
+                
+                if (period === 'today') {
+                    return item[dateField] === todayStr;
+                } else if (period === 'this-week') {
+                    const diffTime = Math.abs(today - itemDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 7 && itemDate <= today;
+                } else if (period === 'this-month') {
+                    return itemDate.getFullYear() === 2026 && itemDate.getMonth() === 6; // July
+                } else if (period === 'this-year') {
+                    return itemDate.getFullYear() === 2026;
+                }
+                return true;
+            });
+        }
+
+        // --- UI DRAWINGS ---
+
+        // View 1: Login
+        function showLoginScreen() {
+            setView(`
+                <div class="min-h-screen flex items-center justify-center bg-brand-blue py-12 px-4 sm:px-6 lg:px-8">
+                    <div class="max-w-md w-full space-y-8 bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl transition-all duration-300">
+                        <div class="text-center">
+                            <div class="mx-auto h-16 w-16 bg-brand-blue/10 dark:bg-brand-blue/30 rounded-2xl flex items-center justify-center text-brand-blue dark:text-blue-400 mb-4">
+                                <i data-lucide="trending-up" class="h-10 w-10"></i>
+                            </div>
+                            <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white">BizTrack</h2>
+                            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                Gestion d'activités & Suivi des revenus
+                            </p>
+                        </div>
+                        <form id="loginForm" class="mt-8 space-y-6">
+                            <div class="rounded-md shadow-sm space-y-4">
+                                <div>
+                                    <label for="clientCode" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Code Client d'Accès</label>
+                                    <div class="relative rounded-md shadow-sm">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                            <i data-lucide="user" class="h-5 w-5"></i>
+                                        </div>
+                                        <input id="clientCode" name="clientCode" type="text" required class="focus:ring-brand-blue focus:border-brand-blue block w-full pl-10 pr-3 py-2.5 sm:text-sm border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg" placeholder="Ex: 1111 ou ADMIN">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="pinCode" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Code PIN de Sécurité (4 chiffres)</label>
+                                    <div class="relative rounded-md shadow-sm">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                            <i data-lucide="lock" class="h-5 w-5"></i>
+                                        </div>
+                                        <input id="pinCode" name="pinCode" type="password" maxlength="4" inputmode="numeric" required class="focus:ring-brand-blue focus:border-brand-blue block w-full pl-10 pr-3 py-2.5 sm:text-sm border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg placeholder-slate-400" placeholder="••••">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="loginError" class="hidden text-sm text-brand-red font-medium text-center bg-red-50 dark:bg-red-900/30 p-2.5 rounded-lg border border-red-200 dark:border-red-800">
+                            </div>
+
+                            <div>
+                                <button type="submit" class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-brand-blue hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-all">
+                                    Se connecter
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="mt-6 border-t border-slate-100 dark:border-slate-800 pt-4 text-center">
+                            <span class="text-xs text-slate-400 dark:text-slate-500">
+                                Démo d'accès : Client 1 = <strong class="text-brand-blue dark:text-blue-400">1111</strong> (PIN: 1111) | Client 2 = <strong class="text-brand-blue dark:text-blue-400">2222</strong> (PIN: 2222) | Admin = <strong class="text-brand-blue dark:text-blue-400">ADMIN</strong> (PIN: 9999)
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            document.getElementById('loginForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const code = document.getElementById('clientCode').value.trim();
+                const pin = document.getElementById('pinCode').value.trim();
+                runLogin(code, pin);
+            });
+        }
+
+        // View 2: Wizard
+        function showWizardPanel() {
+            setView(`
+                <div class="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8">
+                    <div class="max-w-2xl w-full bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 border border-slate-200 dark:border-slate-800">
+                        <div class="text-center mb-8">
+                            <div class="mx-auto h-12 w-12 bg-brand-green/10 text-brand-green rounded-full flex items-center justify-center mb-4">
+                                <i data-lucide="sparkles" class="h-6 w-6"></i>
+                            </div>
+                            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Bienvenue sur BizTrack, ${currentUser.name} !</h2>
+                            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Configurez votre espace en moins d'une minute.</p>
+                        </div>
+
+                        <form id="wizardForm" class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                                    Étape 1 : Choisissez votre devise par défaut
+                                </label>
+                                <select id="wizardCurrency" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                                    <option value="FCFA (XOF)" selected>FCFA (XOF) - Afrique de l'Ouest</option>
+                                    <option value="FCFA (XAF)">FCFA (XAF) - Afrique Centrale</option>
+                                    <option value="EUR">Euro (€)</option>
+                                    <option value="USD">Dollar Américain ($)</option>
+                                    <option value="GBP">Livre Sterling (£)</option>
+                                    <option value="CAD">Dollar Canadien ($)</option>
+                                    <option value="XPF">Franc CFP (XPF)</option>
+                                </select>
+                            </div>
+
+                            <div class="border-t border-slate-200 dark:border-slate-800 pt-6">
+                                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                                    Étape 2 : Vos activités initiales
+                                </label>
+                                <div class="space-y-4">
+                                    <div class="flex items-start">
+                                        <div class="flex items-center h-5">
+                                            <input id="usePresets" name="activityChoice" type="radio" checked value="presets" class="focus:ring-brand-blue h-4 w-4 text-brand-blue border-slate-300 dark:border-slate-700 dark:bg-slate-800">
+                                        </div>
+                                        <div class="ml-3 text-sm">
+                                            <label for="usePresets" class="font-medium text-slate-800 dark:text-white">Utiliser les activités proposées par défaut</label>
+                                            <p class="text-slate-500 dark:text-slate-400">Installe automatiquement Commerce et Services pour démarrer rapidement.</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <div class="flex items-center h-5">
+                                            <input id="useCustom" name="activityChoice" type="radio" value="custom" class="focus:ring-brand-blue h-4 w-4 text-brand-blue border-slate-300 dark:border-slate-700 dark:bg-slate-800">
+                                        </div>
+                                        <div class="ml-3 text-sm">
+                                            <label for="useCustom" class="font-medium text-slate-800 dark:text-white">Créer mes propres activités à partir de zéro</label>
+                                            <p class="text-slate-500 dark:text-slate-400">Démarrez avec un espace de travail vierge.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-slate-200 dark:border-slate-800 pt-6">
+                                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-brand-blue hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-all">
+                                    Terminer la configuration
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `);
+
+            document.getElementById('wizardForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const selectedCurrency = document.getElementById('wizardCurrency').value;
+                const usePresets = document.querySelector('input[name="activityChoice"]:checked').value === 'presets';
+
+                await window.BizTrackDB.updateClientCurrency(currentUser.code, selectedCurrency);
+                currentUser.currency = selectedCurrency;
+                localStorage.setItem('biztrack_current_user', JSON.stringify(currentUser));
+
+                if (usePresets) {
+                    // Populate basic default structure
+                    const actId = `act_comm_${currentUser.code}`;
+                    const catId = `cat_comm_1_${currentUser.code}`;
+                    
+                    await window.BizTrackDB.addActivity({
+                        id: actId,
+                        clientId: currentUser.code,
+                        name: 'Commerce',
+                        color: '#1E3A8A',
+                        icon: 'shopping-bag',
+                        desc: "Vente et négoce"
+                    });
+                    await window.BizTrackDB.addCategory({
+                        id: catId,
+                        clientId: currentUser.code,
+                        activityId: actId,
+                        name: "Général"
+                    });
+                    await window.BizTrackDB.addProduct({
+                        id: `prod_1_${currentUser.code}`,
+                        clientId: currentUser.code,
+                        categoryId: catId,
+                        name: "Produit type"
+                    });
+                }
+
+                showDashboard();
+            });
+        }
+
+        // Render Base Client Layout Wrapper
+        async function renderClientLayout(activeTab, contentHtml) {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            
+            // Build notification counts
+            const alerts = [];
+            const todayStr = '2026-07-29';
+            const todaySales = clientInfo.sales.filter(s => s.date === todayStr);
+            const totalSalesAmt = todaySales.reduce((acc, s) => acc + s.total, 0);
+
+            if (totalSalesAmt >= 30000) {
+                alerts.push({ title: "Objectif atteint !", desc: "Vos ventes du jour dépassent 30k.", type: "success", icon: "party-popper" });
+            }
+            if (todaySales.length === 0) {
+                alerts.push({ title: "Rappel : Aucune vente", desc: "Saisissez vos transactions.", type: "warning", icon: "alert-triangle" });
+            }
+            alerts.push({ title: "Sauvegarde locale", desc: "Pensez à exporter vos données.", type: "info", icon: "shield-alert" });
+
+            const sidebarItems = [
+                { id: 'dashboard', label: 'Tableau de bord', icon: 'layout-dashboard' },
+                { id: 'activities', label: 'Mes Activités', icon: 'folder-tree' },
+                { id: 'sales', label: 'Ventes & Prestations', icon: 'shopping-cart' },
+                { id: 'expenses', label: 'Dépenses', icon: 'receipt' },
+                { id: 'reports', label: 'Rapports & Exports', icon: 'file-text' },
+                { id: 'settings', label: 'Paramètres', icon: 'settings' }
+            ];
+
+            const sidebarHtml = sidebarItems.map(item => `
+                <button onclick="navigateTab('${item.id}')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? 'bg-blue-800 text-white shadow-md' : 'text-slate-300 hover:bg-blue-900/50 hover:text-white'}">
+                    <i data-lucide="${item.icon}" class="h-5 w-5"></i>
+                    <span>${item.label}</span>
+                </button>
+            `).join('');
+
+            const dbMode = window.BizTrackDB.getMode();
+            const dbPillHtml = dbMode === 'supabase' 
+                ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 bg-brand-green rounded-full mr-1.5 animate-pulse"></span>
+                    Base Cloud (Supabase/Postgres)
+                   </span>`
+                : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                    <span class="w-1.5 h-1.5 bg-brand-blue rounded-full mr-1.5"></span>
+                    Stockage Local (Offline-First)
+                   </span>`;
+
+            const layoutHtml = `
+                <div class="h-screen flex overflow-hidden bg-slate-50 dark:bg-slate-950">
+                    <!-- SIDEBAR (Desktop) -->
+                    <div class="hidden md:flex md:flex-shrink-0">
+                        <div class="flex flex-col w-64 bg-brand-blue text-white">
+                            <div class="h-16 flex items-center px-6 border-b border-blue-900">
+                                <i data-lucide="trending-up" class="h-6 w-6 text-brand-green mr-2"></i>
+                                <span class="text-lg font-bold tracking-wider">BizTrack</span>
+                            </div>
+                            <div class="flex-1 flex flex-col justify-between overflow-y-auto p-4 space-y-2">
+                                <nav class="space-y-1.5">
+                                    ${sidebarHtml}
+                                </nav>
+                                <div class="border-t border-blue-900 pt-4 mt-4 font-sans">
+                                    <div class="px-4 py-2 bg-blue-950/40 rounded-lg mb-2 text-xs">
+                                        <p class="text-blue-300 text-[10px]">Client connecté</p>
+                                        <p class="font-bold text-white truncate">${currentUser.name}</p>
+                                        <p class="text-[9px] text-brand-green font-mono mt-0.5">Code : ${currentUser.code}</p>
+                                    </div>
+                                    <button onclick="handleLogout()" class="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-red-900/30 hover:text-white transition-colors">
+                                        <i data-lucide="log-out" class="h-5 w-5"></i>
+                                        <span>Se déconnecter</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MAIN LAYOUT AREA -->
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <!-- HEADER -->
+                        <header class="h-16 bg-white dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-800 px-4 flex items-center justify-between z-10">
+                            <div class="flex items-center space-x-3">
+                                <button onclick="toggleMobileMenu()" class="md:hidden text-slate-500 hover:text-slate-600 focus:outline-none">
+                                    <i data-lucide="menu" class="h-6 w-6"></i>
+                                </button>
+                                ${dbPillHtml}
+                            </div>
+
+                            <div class="flex items-center space-x-4">
+                                <button onclick="openModal('saleModal')" class="bg-brand-blue hover:bg-blue-800 text-white px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold shadow-sm flex items-center space-x-2 transition-all">
+                                    <i data-lucide="plus" class="h-4 w-4"></i>
+                                    <span>Vente</span>
+                                </button>
+                                <button onclick="toggleTheme()" class="text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-full focus:outline-none transition-colors">
+                                    <i data-lucide="sun" class="h-5 w-5 dark:hidden"></i>
+                                    <i data-lucide="moon" class="h-5 w-5 hidden dark:block"></i>
+                                </button>
+                            </div>
+                        </header>
+
+                        <!-- CONTENT CONTAINER -->
+                        <main class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-950">
+                            ${contentHtml}
+                        </main>
+                    </div>
+                </div>
+
+                <!-- FLOATING MODAL: RECORD SALE -->
+                <div id="saleModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-500 bg-opacity-75" onclick="closeModal('saleModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-white dark:bg-slate-900 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full p-6 border border-slate-200 dark:border-slate-800">
+                            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                                <h3 class="text-lg font-bold text-slate-900 dark:text-white flex items-center">
+                                    <i data-lucide="shopping-cart" class="h-5 w-5 text-brand-blue mr-2"></i>
+                                    Enregistrer une Vente / Prestation
+                                </h3>
+                                <button onclick="closeModal('saleModal')" class="text-slate-400 hover:text-slate-500">
+                                    <i data-lucide="x" class="h-5 w-5"></i>
+                                </button>
+                            </div>
+                            <form id="saleForm" class="mt-4 space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Activité *</label>
+                                        <select id="saleActivity" required onchange="populateSaleCategories()" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Catégorie *</label>
+                                        <select id="saleCategory" required onchange="populateSaleProducts()" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue"></select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Produit ou service (facultatif)</label>
+                                    <select id="saleProduct" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue"></select>
+                                </div>
+                                <div class="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Date *</label>
+                                        <input type="date" id="saleDate" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Quantité *</label>
+                                        <input type="number" id="saleQuantity" min="1" value="1" required oninput="calculateSaleTotal()" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Prix Unitaire *</label>
+                                        <input type="number" id="salePrice" min="0" required oninput="calculateSaleTotal()" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                    </div>
+                                </div>
+                                <div class="bg-blue-50 dark:bg-blue-950/40 p-3 rounded-lg flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Montant Total :</span>
+                                    <span id="saleTotalLabel" class="text-base font-bold text-brand-blue dark:text-blue-400">0</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Client (facultatif)</label>
+                                        <input type="text" id="saleClientName" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue" placeholder="Nom">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Mode de paiement</label>
+                                        <select id="salePaymentMethod" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                            <option value="Espèces">Espèces</option>
+                                            <option value="Mobile Money">Mobile Money</option>
+                                            <option value="Carte Bancaire">Carte Bancaire</option>
+                                            <option value="Chèque">Chèque</option>
+                                            <option value="Virement">Virement</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Observation</label>
+                                    <textarea id="saleObservation" rows="2" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue" placeholder="Notes..."></textarea>
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('saleModal')" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-brand-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">Enregistrer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            setView(layoutHtml);
+
+            // Populators for Sale Form Modal fields
+            document.getElementById('saleDate').value = '2026-07-29';
+            
+            // Build dynamic fields option lists
+            const selectAct = document.getElementById('saleActivity');
+            selectAct.innerHTML = clientInfo.activities.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || '<option value="">Aucune activité</option>';
+            
+            populateSaleCategories();
+            calculateSaleTotal();
+
+            // Set up Quick Sale Form submit listener
+            document.getElementById('saleForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const qty = parseInt(document.getElementById('saleQuantity').value);
+                const price = parseFloat(document.getElementById('salePrice').value);
+                
+                const newSale = {
+                    id: 's_' + Date.now(),
+                    clientId: currentUser.code,
+                    activityId: document.getElementById('saleActivity').value,
+                    categoryId: document.getElementById('saleCategory').value,
+                    productId: document.getElementById('saleProduct').value,
+                    date: document.getElementById('saleDate').value,
+                    quantity: qty,
+                    unitPrice: price,
+                    total: qty * price,
+                    clientName: document.getElementById('saleClientName').value.trim(),
+                    paymentMethod: document.getElementById('salePaymentMethod').value,
+                    observation: document.getElementById('saleObservation').value.trim()
+                };
+
+                await window.BizTrackDB.addSale(newSale);
+                closeModal('saleModal');
+                navigateTab(activeTab);
+            });
+        }
+
+        // --- Navigation ---
+        function navigateTab(tabId) {
+            if (currentUser.role === 'admin') {
+                showAdminPanel();
+                return;
+            }
+
+            if (tabId === 'dashboard') {
+                showDashboard();
+            } else if (tabId === 'activities') {
+                showActivitiesTab();
+            } else if (tabId === 'sales') {
+                showSalesTab();
+            } else if (tabId === 'expenses') {
+                showExpensesTab();
+            } else if (tabId === 'reports') {
+                showReportsTab();
+            } else if (tabId === 'settings') {
+                showSettingsTab();
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        async function populateSaleCategories() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const activeActivityId = document.getElementById('saleActivity').value;
+            const select = document.getElementById('saleCategory');
+            const filteredCats = clientInfo.categories.filter(c => c.activityId === activeActivityId);
+            select.innerHTML = filteredCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('') || '<option value="">Aucune catégorie</option>';
+            populateSaleProducts();
+        }
+
+        async function populateSaleProducts() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const activeCategoryId = document.getElementById('saleCategory').value;
+            const select = document.getElementById('saleProduct');
+            const filteredProds = clientInfo.products.filter(p => p.categoryId === activeCategoryId);
+            
+            let html = '<option value="">-- Aucun produit --</option>';
+            html += filteredProds.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            select.innerHTML = html;
+        }
+
+        function calculateSaleTotal() {
+            const qty = parseInt(document.getElementById('saleQuantity').value) || 0;
+            const price = parseFloat(document.getElementById('salePrice').value) || 0;
+            const total = qty * price;
+            document.getElementById('saleTotalLabel').innerText = formatCurrency(total, currentUser.currency);
+        }
+
+        // --- TAB 1 : DASHBOARD ---
+        async function showDashboard() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            
+            const filteredSales = filterByPeriod(clientInfo.sales, currentPeriod, 'date');
+            const filteredExpenses = filterByPeriod(clientInfo.expenses, currentPeriod, 'date');
+
+            const totalRevenue = filteredSales.reduce((sum, s) => sum + s.total, 0);
+            const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const totalProfit = totalRevenue - totalExpenses;
+            const salesCount = filteredSales.length;
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <!-- Title and Period Filter -->
+                    <div class="sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Tableau de bord principal</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">Analyse en temps réel de votre rentabilité.</p>
+                        </div>
+                        <div class="mt-3 sm:mt-0 sm:ml-4">
+                            <span class="relative z-0 inline-flex shadow-sm rounded-lg">
+                                ${['today', 'this-week', 'this-month', 'this-year'].map(p => {
+                                    const labels = { 'today': "Aujourd'hui", 'this-week': "Semaine", 'this-month': "Ce Mois", 'this-year': "Cette Année" };
+                                    const activeClass = currentPeriod === p ? 'bg-brand-blue text-white' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50';
+                                    const roundClass = p === 'today' ? 'rounded-l-lg' : (p === 'this-year' ? 'rounded-r-lg' : '');
+                                    return `<button onclick="changePeriod('${p}')" class="relative inline-flex items-center px-4 py-2 border border-slate-300 dark:border-slate-800 text-xs font-semibold ${activeClass} ${roundClass} focus:z-10 focus:outline-none transition-colors duration-150">${labels[p]}</button>`;
+                                }).join('')}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Metrics Cards Grid -->
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                        <div class="bg-white dark:bg-slate-900 shadow-sm rounded-xl border border-slate-100 dark:border-slate-800 p-5 flex items-center space-x-4">
+                            <div class="p-3 bg-blue-50 dark:bg-blue-950/40 text-brand-blue dark:text-blue-400 rounded-xl"><i data-lucide="trending-up" class="h-6 w-6"></i></div>
+                            <div>
+                                <p class="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Chiffre d'Affaires</p>
+                                <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">${formatCurrency(totalRevenue, clientInfo.currency)}</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-900 shadow-sm rounded-xl border border-slate-100 dark:border-slate-800 p-5 flex items-center space-x-4">
+                            <div class="p-3 bg-amber-50 dark:bg-amber-950/40 text-brand-orange dark:text-amber-400 rounded-xl"><i data-lucide="receipt" class="h-6 w-6"></i></div>
+                            <div>
+                                <p class="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Dépenses</p>
+                                <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">${formatCurrency(totalExpenses, clientInfo.currency)}</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-900 shadow-sm rounded-xl border border-slate-100 dark:border-slate-800 p-5 flex items-center space-x-4">
+                            <div class="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-brand-green dark:text-emerald-400 rounded-xl"><i data-lucide="wallet" class="h-6 w-6"></i></div>
+                            <div>
+                                <p class="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Bénéfice Net</p>
+                                <p class="text-xl sm:text-2xl font-extrabold ${totalProfit >= 0 ? 'text-brand-green' : 'text-brand-red'} mt-1">
+                                    ${formatCurrency(totalProfit, clientInfo.currency)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-900 shadow-sm rounded-xl border border-slate-100 dark:border-slate-800 p-5 flex items-center space-x-4">
+                            <div class="p-3 bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-xl"><i data-lucide="shopping-bag" class="h-6 w-6"></i></div>
+                            <div>
+                                <p class="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Transactions</p>
+                                <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">${salesCount} ventes</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5">
+                            <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Évolution des Flux</h3>
+                            <div class="relative h-64 w-full"><canvas id="revenueLineChart"></canvas></div>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5">
+                            <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">CA par Activité</h3>
+                            <div class="relative h-64 w-full flex justify-center"><canvas id="activityPieChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions -->
+                    <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 font-sans">Transactions Récentes</h3>
+                            <button onclick="navigateTab('sales')" class="text-xs text-brand-blue font-semibold hover:underline">Voir tout</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                                <thead class="bg-slate-50 dark:bg-slate-850 text-slate-400">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Date</th>
+                                        <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Activité & Catégorie</th>
+                                        <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Produit / Service</th>
+                                        <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Prix de vente</th>
+                                        <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                                    ${filteredSales.slice(0, 5).map(s => {
+                                        const act = clientInfo.activities.find(a => a.id === s.activityId);
+                                        const cat = clientInfo.categories.find(c => c.id === s.categoryId);
+                                        const prod = clientInfo.products.find(p => p.id === s.productId);
+                                        return `
+                                            <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                                <td class="px-6 py-4 whitespace-nowrap text-slate-500 font-medium">${s.date}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap">
+                                                    <div class="flex items-center">
+                                                        <span class="inline-block w-2.5 h-2.5 rounded-full mr-2" style="background-color: ${act ? act.color : '#ccc'}"></span>
+                                                        <div>
+                                                            <div class="font-bold text-slate-800 dark:text-slate-200">${act ? act.name : 'Inconnu'}</div>
+                                                            <div class="text-[10px] text-slate-500">${cat ? cat.name : 'Non spécifié'}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="px-6 py-4 whitespace-nowrap font-medium">${prod ? prod.name : '—'}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap font-mono">${s.quantity} x ${formatCurrency(s.unitPrice, clientInfo.currency)}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap font-bold text-brand-green font-mono">${formatCurrency(s.total, clientInfo.currency)}</td>
+                                            </tr>
+                                        `;
+                                    }).join('') || `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">Aucune vente enregistrée.</td></tr>`}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            await renderClientLayout('dashboard', contentHtml);
+            
+            setTimeout(() => {
+                initDashboardCharts(clientInfo, filteredSales, filteredExpenses);
+            }, 50);
+        }
+
+        function changePeriod(period) {
+            currentPeriod = period;
+            showDashboard();
+        }
+
+        function initDashboardCharts(clientInfo, filteredSales, filteredExpenses) {
+            if (charts.revenue) charts.revenue.destroy();
+            if (charts.activity) charts.activity.destroy();
+
+            const timelineData = {};
+            filteredSales.forEach(s => {
+                if (!timelineData[s.date]) timelineData[s.date] = { rev: 0, exp: 0 };
+                timelineData[s.date].rev += s.total;
+            });
+            filteredExpenses.forEach(e => {
+                if (!timelineData[e.date]) timelineData[e.date] = { rev: 0, exp: 0 };
+                timelineData[e.date].exp += e.amount;
+            });
+
+            const sortedDates = Object.keys(timelineData).sort();
+            const revenues = sortedDates.map(d => timelineData[d].rev);
+            const expenses = sortedDates.map(d => timelineData[d].exp);
+
+            const isDark = theme === 'dark';
+            const gridColor = isDark ? '#1e293b' : '#f1f5f9';
+            const textColor = isDark ? '#94a3b8' : '#475569';
+
+            const ctx1 = document.getElementById('revenueLineChart').getContext('2d');
+            charts.revenue = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [
+                        { label: 'Recettes (CA)', data: revenues, borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderWidth: 2, tension: 0.3, fill: true },
+                        { label: 'Dépenses', data: expenses, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2, tension: 0.3, fill: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                        y: { grid: { color: gridColor }, ticks: { color: textColor } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: textColor } }
+                    }
+                }
+            });
+
+            const activityStats = {};
+            filteredSales.forEach(s => {
+                const actName = clientInfo.activities.find(a => a.id === s.activityId)?.name || 'Inconnu';
+                if (!activityStats[actName]) activityStats[actName] = 0;
+                activityStats[actName] += s.total;
+            });
+
+            const actLabels = Object.keys(activityStats);
+            const actData = Object.values(activityStats);
+            const colorsPreset = ['#1E3A8A', '#10B981', '#3B82F6', '#84CC16', '#F59E0B'];
+
+            const ctx2 = document.getElementById('activityPieChart').getContext('2d');
+            charts.activity = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: actLabels.length > 0 ? actLabels : ['Aucune vente'],
+                    datasets: [{
+                        data: actData.length > 0 ? actData : [1],
+                        backgroundColor: actLabels.length > 0 ? colorsPreset.slice(0, actLabels.length) : ['#e2e8f0']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right', labels: { color: textColor } }
+                    }
+                }
+            });
+        }
+
+        // --- TAB 2 : ACTIVITIES ---
+        async function showActivitiesTab() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <div class="sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Vos Activités & Catalogues</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">Gérez vos domaines, catégories et produits.</p>
+                        </div>
+                        <div class="mt-3 sm:mt-0 sm:ml-4">
+                            <button onclick="openModal('addActivityModal')" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg text-white bg-brand-blue hover:bg-blue-800 shadow-sm transition-all">
+                                <i data-lucide="plus" class="h-4 w-4 mr-2"></i> Nouvelle Activité
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${clientInfo.activities.map(act => {
+                            const actCats = clientInfo.categories.filter(c => c.activityId === act.id);
+                            const salesForAct = clientInfo.sales.filter(s => s.activityId === act.id);
+                            const totalRevAct = salesForAct.reduce((sum, s) => sum + s.total, 0);
+
+                            return `
+                                <div class="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                                    <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="p-2.5 rounded-lg text-white" style="background-color: ${act.color}">
+                                                <i data-lucide="${act.icon || 'folder'}" class="h-5 w-5"></i>
+                                            </div>
+                                            <div>
+                                                <h3 class="font-bold text-slate-800 dark:text-white text-base">${act.name}</h3>
+                                                <p class="text-xs text-slate-400 truncate max-w-[150px]">${act.desc || 'Pas de description'}</p>
+                                            </div>
+                                        </div>
+                                        <button onclick="handleDeleteActivity('${act.id}')" class="text-slate-400 hover:text-brand-red p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                                    </div>
+                                    <div class="p-5 bg-slate-50/50 dark:bg-slate-900/40 space-y-4">
+                                        <div class="flex justify-between items-center text-xs">
+                                            <span class="text-slate-400 font-medium">Revenus cumulés :</span>
+                                            <span class="font-bold text-brand-green font-mono">${formatCurrency(totalRevAct, clientInfo.currency)}</span>
+                                        </div>
+
+                                        <div class="space-y-2">
+                                            <div class="flex justify-between items-center border-t border-slate-100 dark:border-slate-800 pt-3">
+                                                <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Catégories</span>
+                                                <button onclick="openAddCategoryModal('${act.id}', '${act.name}')" class="text-[11px] text-brand-blue font-bold flex items-center hover:underline">
+                                                    <i data-lucide="plus" class="h-3 w-3 mr-0.5"></i> Ajouter
+                                                </button>
+                                            </div>
+                                            <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                                                ${actCats.map(cat => {
+                                                    const catProds = clientInfo.products.filter(p => p.categoryId === cat.id);
+                                                    return `
+                                                        <div class="flex items-center justify-between bg-white dark:bg-slate-850 p-2 rounded-lg border border-slate-100 dark:border-slate-800 text-xs">
+                                                            <div class="font-semibold text-slate-600 dark:text-slate-400 truncate max-w-[120px]">${cat.name}</div>
+                                                            <div class="flex items-center space-x-1">
+                                                                <button onclick="openAddProductModal('${cat.id}', '${cat.name}')" class="text-[9px] text-slate-400 hover:text-brand-blue font-semibold bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">+ Offre (${catProds.length})</button>
+                                                                <button onclick="handleDeleteCategory('${cat.id}')" class="text-slate-400 hover:text-brand-red p-0.5"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+                                                            </div>
+                                                        </div>
+                                                    `;
+                                                }).join('') || '<p class="text-[11px] text-center text-slate-400 py-2">Aucune catégorie</p>'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- MODAL: ADD ACTIVITY -->
+                <div id="addActivityModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-500 bg-opacity-75" onclick="closeModal('addActivityModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-white dark:bg-slate-900 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-6 border border-slate-200 dark:border-slate-800">
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Nouvelle Activité</h3>
+                            <form id="addActivityForm" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Nom de l'activité *</label>
+                                    <input type="text" id="actName" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Couleur *</label>
+                                        <input type="color" id="actColor" value="#1E3A8A" required class="w-full h-9 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Icône *</label>
+                                        <select id="actIcon" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm">
+                                            <option value="shopping-bag" selected>Commerce / Boutique</option>
+                                            <option value="laptop">Services numériques</option>
+                                            <option value="graduation-cap">Formations</option>
+                                            <option value="leaf">Agriculture</option>
+                                            <option value="truck">Transport</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Description</label>
+                                    <textarea id="actDesc" rows="2" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue" placeholder="Description de l'activité..."></textarea>
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('addActivityModal')" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-brand-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">Créer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: ADD CATEGORY -->
+                <div id="addCategoryModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-500 bg-opacity-75" onclick="closeModal('addCategoryModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-white dark:bg-slate-900 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-6 border border-slate-200 dark:border-slate-800">
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Ajouter une Catégorie</h3>
+                            <p class="text-xs text-slate-400 mb-4">Activité : <strong id="parentActName" class="text-brand-blue">...</strong></p>
+                            <form id="addCategoryForm" class="space-y-4">
+                                <input type="hidden" id="parentActId">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Nom de la catégorie *</label>
+                                    <input type="text" id="catName" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('addCategoryModal')" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-brand-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">Ajouter</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: ADD PRODUCT -->
+                <div id="addProductModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-500 bg-opacity-75" onclick="closeModal('addProductModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-white dark:bg-slate-900 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-6 border border-slate-200 dark:border-slate-800">
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Ajouter un Produit / Service</h3>
+                            <p class="text-xs text-slate-400 mb-4">Catégorie : <strong id="parentCatName" class="text-brand-blue">...</strong></p>
+                            <form id="addProductForm" class="space-y-4">
+                                <input type="hidden" id="parentCatId">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Nom du produit / service *</label>
+                                    <input type="text" id="prodName" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('addProductModal')" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-brand-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">Ajouter</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            await renderClientLayout('activities', contentHtml);
+
+            // Listeners
+            document.getElementById('addActivityForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await window.BizTrackDB.addActivity({
+                    id: 'act_' + Date.now() + '_' + currentUser.code,
+                    clientId: currentUser.code,
+                    name: document.getElementById('actName').value.trim(),
+                    color: document.getElementById('actColor').value,
+                    icon: document.getElementById('actIcon').value,
+                    desc: document.getElementById('actDesc').value.trim()
+                });
+                closeModal('addActivityModal');
+                showActivitiesTab();
+            });
+
+            document.getElementById('addCategoryForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await window.BizTrackDB.addCategory({
+                    id: 'cat_' + Date.now() + '_' + currentUser.code,
+                    clientId: currentUser.code,
+                    activityId: document.getElementById('parentActId').value,
+                    name: document.getElementById('catName').value.trim()
+                });
+                closeModal('addCategoryModal');
+                showActivitiesTab();
+            });
+
+            document.getElementById('addProductForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await window.BizTrackDB.addProduct({
+                    id: 'prod_' + Date.now() + '_' + currentUser.code,
+                    clientId: currentUser.code,
+                    categoryId: document.getElementById('parentCatId').value,
+                    name: document.getElementById('prodName').value.trim()
+                });
+                closeModal('addProductModal');
+                showActivitiesTab();
+            });
+        }
+
+        async function handleDeleteActivity(id) {
+            if (confirm("Supprimer cette activité ainsi que toutes ses catégories ?")) {
+                await window.BizTrackDB.deleteActivity(id);
+                showActivitiesTab();
+            }
+        }
+
+        async function handleDeleteCategory(id) {
+            if (confirm("Supprimer cette catégorie ?")) {
+                await window.BizTrackDB.deleteCategory(id);
+                showActivitiesTab();
+            }
+        }
+
+        function openAddCategoryModal(actId, actName) {
+            document.getElementById('parentActId').value = actId;
+            document.getElementById('parentActName').innerText = actName;
+            document.getElementById('catName').value = '';
+            openModal('addCategoryModal');
+        }
+
+        function openAddProductModal(catId, catName) {
+            document.getElementById('parentCatId').value = catId;
+            document.getElementById('parentCatName').innerText = catName;
+            document.getElementById('prodName').value = '';
+            openModal('addProductModal');
+        }
+
+
+        // --- TAB 3 : SALES LIST ---
+        async function showSalesTab() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const filterActivityVal = document.getElementById('salesFilterActivity')?.value || 'all';
+            const searchQueryVal = document.getElementById('salesSearchQuery')?.value.toLowerCase() || '';
+
+            let filteredList = clientInfo.sales;
+
+            if (filterActivityVal !== 'all') {
+                filteredList = filteredList.filter(s => s.activityId === filterActivityVal);
+            }
+
+            if (searchQueryVal !== '') {
+                filteredList = filteredList.filter(s => {
+                    const actName = clientInfo.activities.find(a => a.id === s.activityId)?.name.toLowerCase() || '';
+                    const client = s.clientName?.toLowerCase() || '';
+                    return actName.includes(searchQueryVal) || client.includes(searchQueryVal);
+                });
+            }
+
+            filteredList.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <div class="sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Historique des Ventes</h2>
+                            <p class="text-sm text-slate-500">Suivi et modification de l'intégralité de vos ventes.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-4 sm:flex sm:items-center sm:justify-between space-y-3 sm:space-y-0 sm:space-x-4">
+                        <div class="flex-1 relative">
+                            <input type="text" id="salesSearchQuery" oninput="showSalesTab()" value="${searchQueryVal}" class="focus:ring-brand-blue w-full pl-3 pr-3 py-2 text-sm border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg" placeholder="Rechercher par client ou activité...">
+                        </div>
+                        <select id="salesFilterActivity" onchange="showSalesTab()" class="border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                            <option value="all">Toutes les activités</option>
+                            ${clientInfo.activities.map(a => `<option value="${a.id}" ${filterActivityVal === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                        <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                            <thead class="bg-slate-50 dark:bg-slate-850 text-slate-400">
+                                <tr>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Activité / Catégorie</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Quantité / Prix</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Total</th>
+                                    <th class="px-6 py-3 text-right font-bold uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                                ${filteredList.map(s => {
+                                    const act = clientInfo.activities.find(a => a.id === s.activityId);
+                                    const cat = clientInfo.categories.find(c => c.id === s.categoryId);
+                                    return `
+                                        <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                            <td class="px-6 py-4 whitespace-nowrap text-slate-500 font-medium">${s.date}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap font-semibold">
+                                                ${act ? act.name : 'Inconnu'} (${cat ? cat.name : '—'})
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap font-mono">${s.quantity} x ${formatCurrency(s.unitPrice, clientInfo.currency)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap font-extrabold text-brand-green font-mono">${formatCurrency(s.total, clientInfo.currency)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-right">
+                                                <button onclick="handleDeleteSale('${s.id}')" class="text-slate-400 hover:text-brand-red p-1"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('') || `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400">Aucune vente enregistrée.</td></tr>`}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            await renderClientLayout('sales', contentHtml);
+        }
+
+        async function handleDeleteSale(id) {
+            if (confirm("Supprimer cette vente définitivement ?")) {
+                await window.BizTrackDB.deleteSale(id);
+                showSalesTab();
+            }
+        }
+
+
+        // --- TAB 4 : EXPENSES ---
+        async function showExpensesTab() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const filterCategoryVal = document.getElementById('expensesFilterCategory')?.value || 'all';
+
+            let filteredList = clientInfo.expenses;
+            if (filterCategoryVal !== 'all') {
+                filteredList = filteredList.filter(e => e.category === filterCategoryVal);
+            }
+
+            filteredList.sort((a, b) => new Date(b.date) - new Date(a.date));
+            const totalExp = filteredList.reduce((acc, e) => acc + e.amount, 0);
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <div class="sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Gestion des Dépenses</h2>
+                            <p class="text-sm text-slate-500">Consignez vos dépenses d'exploitation.</p>
+                        </div>
+                        <div class="mt-3 sm:mt-0 sm:ml-4">
+                            <button onclick="openModal('expenseModal')" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg text-white bg-brand-orange hover:bg-amber-600 shadow-sm transition-all">
+                                <i data-lucide="plus" class="h-4 w-4 mr-2"></i> Nouvelle Dépense
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5 flex items-center space-x-3.5">
+                            <div class="p-3 bg-amber-50 text-brand-orange rounded-xl"><i data-lucide="receipt" class="h-6 w-6"></i></div>
+                            <div>
+                                <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total des dépenses</p>
+                                <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-mono mt-1">${formatCurrency(totalExp, clientInfo.currency)}</p>
+                            </div>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-4 md:col-span-2 flex items-center justify-between">
+                            <span class="text-sm font-semibold text-slate-600 dark:text-slate-400">Catégorie :</span>
+                            <select id="expensesFilterCategory" onchange="showExpensesTab()" class="border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm">
+                                <option value="all">Tous les types</option>
+                                ${['Achat', 'Transport', 'Carburant', 'Publicité', 'Salaire', 'Internet', 'Divers'].map(c => `<option value="${c}" ${filterCategoryVal === c ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                        <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                            <thead class="bg-slate-50 dark:bg-slate-850 text-slate-400">
+                                <tr>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Catégorie</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Observation / Justificatif</th>
+                                    <th class="px-6 py-3 text-left font-bold uppercase tracking-wider">Montant</th>
+                                    <th class="px-6 py-3 text-right font-bold uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                                ${filteredList.map(e => `
+                                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                        <td class="px-6 py-4 whitespace-nowrap text-slate-500 font-medium">${e.date}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap font-bold text-brand-orange">${e.category}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap font-medium">${e.observation || '—'}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap font-bold text-brand-orange font-mono">${formatCurrency(e.amount, clientInfo.currency)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right">
+                                            <button onclick="handleDeleteExpense('${e.id}')" class="text-slate-400 hover:text-brand-red p-1"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('') || `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400">Aucune dépense enregistrée.</td></tr>`}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- FLOATING MODAL: RECORD EXPENSE -->
+                <div id="expenseModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-500 bg-opacity-75" onclick="closeModal('expenseModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-white dark:bg-slate-900 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-6 border border-slate-200 dark:border-slate-800">
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Enregistrer une Dépense</h3>
+                            <form id="expenseForm" class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Date *</label>
+                                        <input type="date" id="expDate" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Catégorie *</label>
+                                        <select id="expCategory" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm">
+                                            <option value="Achat">Achat</option>
+                                            <option value="Transport">Transport</option>
+                                            <option value="Carburant">Carburant</option>
+                                            <option value="Publicité">Publicité</option>
+                                            <option value="Salaire">Salaire</option>
+                                            <option value="Internet">Internet</option>
+                                            <option value="Divers">Divers</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Montant *</label>
+                                    <input type="number" id="expAmount" min="0" required class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Observation</label>
+                                    <textarea id="expObservation" rows="2" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm"></textarea>
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('expenseModal')" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-brand-orange hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Enregistrer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            await renderClientLayout('expenses', contentHtml);
+            document.getElementById('expDate').value = '2026-07-29';
+
+            document.getElementById('expenseForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await window.BizTrackDB.addExpense({
+                    id: 'e_' + Date.now(),
+                    clientId: currentUser.code,
+                    date: document.getElementById('expDate').value,
+                    category: document.getElementById('expCategory').value,
+                    amount: parseFloat(document.getElementById('expAmount').value),
+                    observation: document.getElementById('expObservation').value.trim()
+                });
+                closeModal('expenseModal');
+                showExpensesTab();
+            });
+        }
+
+        async function handleDeleteExpense(id) {
+            if (confirm("Supprimer cette dépense ?")) {
+                await window.BizTrackDB.deleteExpense(id);
+                showExpensesTab();
+            }
+        }
+
+
+        // --- TAB 5 : REPORTS & EXPORTS ---
+        async function showReportsTab() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Centre de Rapports & Exports</h2>
+                        <p class="text-sm text-slate-500">Exportez ou imprimez vos synthèses financières.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5 space-y-4">
+                            <h3 class="font-bold text-sm">Générer un Rapport</h3>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 mb-1">Période</label>
+                                <select id="reportPeriod" onchange="runGenerateReport()" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2.5 text-sm">
+                                    <option value="today">Aujourd'hui (29 Juillet 2026)</option>
+                                    <option value="this-week">Cette Semaine (7 derniers jours)</option>
+                                    <option value="this-month" selected>Ce Mois (Juillet 2026)</option>
+                                    <option value="this-year">Cette Année (Exercice 2026)</option>
+                                </select>
+                            </div>
+                            <div class="pt-2 space-y-2">
+                                <button onclick="window.print()" class="w-full flex items-center justify-center space-x-2 bg-brand-blue hover:bg-blue-800 text-white p-2.5 rounded-lg text-sm font-semibold shadow-sm"><i data-lucide="printer" class="h-4 w-4"></i> Imprimer en PDF</button>
+                                <button onclick="runExportCSV()" class="w-full flex items-center justify-center space-x-2 bg-brand-green hover:bg-emerald-600 text-white p-2.5 rounded-lg text-sm font-semibold shadow-sm"><i data-lucide="file-spreadsheet" class="h-4 w-4"></i> Exporter vers Excel (CSV)</button>
+                            </div>
+                        </div>
+
+                        <div class="md:col-span-2 bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-6" id="reportPreviewArea">
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            await renderClientLayout('reports', contentHtml);
+            await runGenerateReport();
+        }
+
+        async function runGenerateReport() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const period = document.getElementById('reportPeriod').value;
+
+            const sales = filterByPeriod(clientInfo.sales, period, 'date');
+            const expenses = filterByPeriod(clientInfo.expenses, period, 'date');
+
+            const rev = sales.reduce((acc, s) => acc + s.total, 0);
+            const exp = expenses.reduce((acc, e) => acc + e.amount, 0);
+            const profit = rev - exp;
+
+            const actSummary = {};
+            sales.forEach(s => {
+                const actName = clientInfo.activities.find(a => a.id === s.activityId)?.name || 'Autre';
+                if (!actSummary[actName]) actSummary[actName] = { sales: 0, revenue: 0 };
+                actSummary[actName].sales++;
+                actSummary[actName].revenue += s.total;
+            });
+
+            const periodsLabels = { 'today': "Journalier - 29 Juillet 2026", 'this-week': "Hebdomadaire", 'this-month': "Mensuel - Juillet 2026", 'this-year': "Annuel - Exercice 2026" };
+
+            const previewHtml = `
+                <div class="space-y-6">
+                    <div class="border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-xl font-extrabold text-brand-blue">RAPPORT BIZTRACK</h2>
+                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">${periodsLabels[period]}</p>
+                        </div>
+                        <div class="text-right text-xs">
+                            <p class="font-bold text-slate-700 dark:text-slate-300">${currentUser.name}</p>
+                            <p class="font-mono text-slate-400">ID: ${currentUser.code}</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4 text-center text-xs">
+                        <div class="bg-blue-50/50 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50">
+                            <span class="text-slate-400 font-bold uppercase tracking-wider">Recettes</span>
+                            <p class="text-base font-bold text-brand-blue mt-1 font-mono">${formatCurrency(rev, clientInfo.currency)}</p>
+                        </div>
+                        <div class="bg-amber-50/50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-100 dark:border-amber-900/50">
+                            <span class="text-slate-400 font-bold uppercase tracking-wider">Charges</span>
+                            <p class="text-base font-bold text-brand-orange mt-1 font-mono">${formatCurrency(exp, clientInfo.currency)}</p>
+                        </div>
+                        <div class="bg-emerald-50/50 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                            <span class="text-slate-400 font-bold uppercase tracking-wider">Bénéfice</span>
+                            <p class="text-base font-bold text-brand-green mt-1 font-mono">${formatCurrency(profit, clientInfo.currency)}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Ventes par secteur</h4>
+                        <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                            <thead class="bg-slate-50 dark:bg-slate-850">
+                                <tr>
+                                    <th class="px-4 py-2 text-left font-bold text-slate-400">Secteur</th>
+                                    <th class="px-4 py-2 text-center font-bold text-slate-400">Transactions</th>
+                                    <th class="px-4 py-2 text-right font-bold text-slate-400">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                                ${Object.keys(actSummary).map(actName => `
+                                    <tr>
+                                        <td class="px-4 py-2 font-bold">${actName}</td>
+                                        <td class="px-4 py-2 text-center">${actSummary[actName].sales}</td>
+                                        <td class="px-4 py-2 text-right font-bold text-brand-green font-mono">${formatCurrency(actSummary[actName].revenue, clientInfo.currency)}</td>
+                                    </tr>
+                                `).join('') || `<tr><td colspan="3" class="px-4 py-6 text-center text-slate-400">Aucune vente enregistrée.</td></tr>`}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('reportPreviewArea').innerHTML = previewHtml;
+        }
+
+        async function runExportCSV() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+            const period = document.getElementById('reportPeriod').value;
+            const sales = filterByPeriod(clientInfo.sales, period, 'date');
+
+            let csvContent = "data:text/csv;charset=utf-8,ID,Date,Activite,Categorie,Quantite,Prix Unitaire,Total,Client,Mode de Paiement,Observation\n";
+            sales.forEach(s => {
+                const actName = clientInfo.activities.find(a => a.id === s.activityId)?.name || 'Inconnu';
+                const catName = clientInfo.categories.find(c => c.id === s.categoryId)?.name || '—';
+                const row = [s.id, s.date, `"${actName}"`, `"${catName}"`, s.quantity, s.unitPrice, s.total, `"${s.clientName || ''}"`, s.paymentMethod, `"${s.observation || ''}"`].join(",");
+                csvContent += row + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `BizTrack_Export_${currentUser.code}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+
+        // --- TAB 6 : SETTINGS ---
+        async function showSettingsTab() {
+            const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+
+            const contentHtml = `
+                <div class="space-y-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Paramètres</h2>
+                        <p class="text-sm text-slate-500">Configurez votre environnement système unifié.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5 space-y-4">
+                            <h3 class="font-bold text-sm border-b border-slate-100 dark:border-slate-800 pb-2">Préférences Régionales</h3>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 mb-1">Devise d'affichage par défaut</label>
+                                <select id="settingsCurrency" class="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg p-2 text-sm focus:ring-brand-blue">
+                                    <option value="FCFA (XOF)" ${currentUser.currency === 'FCFA (XOF)' ? 'selected' : ''}>FCFA (XOF) - Afrique de l'Ouest</option>
+                                    <option value="FCFA (XAF)" ${currentUser.currency === 'FCFA (XAF)' ? 'selected' : ''}>FCFA (XAF) - Afrique Centrale</option>
+                                    <option value="EUR" ${currentUser.currency === 'EUR' ? 'selected' : ''}>Euro (€)</option>
+                                    <option value="USD" ${currentUser.currency === 'USD' ? 'selected' : ''}>Dollar ($)</option>
+                                </select>
+                            </div>
+                            <button onclick="runSaveClientSettings()" class="bg-brand-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all">Enregistrer</button>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 rounded-xl p-5 space-y-4">
+                            <h3 class="font-bold text-sm border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center">
+                                <i data-lucide="shield-check" class="h-4 w-4 text-brand-green mr-1.5"></i> Sauvegarde (Format JSON)
+                            </h3>
+                            <p class="text-xs text-slate-400">Pour transférer votre base ou sauvegarder vos données.</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                <button onclick="runExportJSON()" class="flex flex-col items-center justify-center p-3 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 rounded-xl text-center space-y-1">
+                                    <i data-lucide="download" class="h-6 w-6 text-brand-blue"></i>
+                                    <span class="text-xs font-bold text-slate-850 dark:text-white">Exporter</span>
+                                </button>
+                                <label class="flex flex-col items-center justify-center p-3 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 rounded-xl text-center cursor-pointer space-y-1">
+                                    <i data-lucide="upload" class="h-6 w-6 text-brand-green"></i>
+                                    <span class="text-xs font-bold text-slate-850 dark:text-white">Importer</span>
+                                    <input type="file" id="importJSONFile" onchange="runImportJSON(event)" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            await renderClientLayout('settings', contentHtml);
+        }
+
+        async function runSaveClientSettings() {
+            const currency = document.getElementById('settingsCurrency').value;
+            await window.BizTrackDB.updateClientCurrency(currentUser.code, currency);
+            currentUser.currency = currency;
+            localStorage.setItem('biztrack_current_user', JSON.stringify(currentUser));
+            alert("Devise mise à jour avec succès !");
+            showSettingsTab();
+        }
+
+        async function runExportJSON() {
+            const db = JSON.parse(localStorage.getItem('biztrack_db'));
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", "BizTrack_Backup.json");
+            dl.click();
+        }
+
+        function runImportJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const r = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    localStorage.setItem('biztrack_db', JSON.stringify(parsed));
+                    alert("Importation réussie !");
+                    showDashboard();
+                } catch(err) {
+                    alert("Erreur de décodage JSON.");
+                }
+            };
+            r.readAsText(file);
+        }
+
+
+        // --- VIEW 3 : CENTRAL ADMINISTRATOR ---
+        async function showAdminPanel() {
+            const clients = await window.BizTrackDB.getAllClients();
+            
+            setView(`
+                <div class="h-screen flex overflow-hidden bg-slate-900 text-slate-100">
+                    <div class="flex flex-shrink-0 w-64 bg-slate-950 flex-col border-r border-slate-800">
+                        <div class="h-16 flex items-center px-6 border-b border-slate-800">
+                            <i data-lucide="shield-check" class="h-6 w-6 text-brand-green mr-2"></i>
+                            <span class="text-base font-extrabold uppercase tracking-wider text-white">BizTrack Admin</span>
+                        </div>
+                        <div class="flex-1 flex flex-col justify-between p-4">
+                            <nav class="space-y-1">
+                                <button class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-semibold bg-blue-900 text-white shadow-md">
+                                    <i data-lucide="users" class="h-5 w-5"></i>
+                                    <span>Gestion des Clients</span>
+                                </button>
+                            </nav>
+                            <div class="border-t border-slate-800 pt-4">
+                                <button onclick="handleLogout()" class="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-950/40 hover:text-white transition-all">
+                                    <i data-lucide="log-out" class="h-5 w-5"></i>
+                                    <span>Se déconnecter</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <header class="h-16 bg-slate-950 border-b border-slate-800 px-6 flex items-center justify-between">
+                            <h2 class="text-lg font-bold text-white">Console Centrale Super-Administrateur</h2>
+                            <span class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full font-semibold">Mode PostgreSQL Actif</span>
+                        </header>
+
+                        <main class="flex-1 overflow-y-auto p-6 space-y-6">
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                                <div class="px-5 py-4 border-b border-slate-800 flex justify-between items-center">
+                                    <h3 class="text-sm font-bold text-white">Comptes Clients & Accès PIN</h3>
+                                    <button onclick="openModal('addClientModal')" class="bg-blue-800 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow transition-all flex items-center">
+                                        <i data-lucide="user-plus" class="h-3.5 w-3.5 mr-1"></i> Nouveau Client
+                                    </button>
+                                </div>
+                                <table class="min-w-full divide-y divide-slate-800 text-xs">
+                                    <thead class="bg-slate-900 text-slate-400">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left">Code Unique</th>
+                                            <th class="px-6 py-3 text-left">Nom du Client</th>
+                                            <th class="px-6 py-3 text-left">Code PIN</th>
+                                            <th class="px-6 py-3 text-left">Devise</th>
+                                            <th class="px-6 py-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-800">
+                                        ${clients.map(c => `
+                                            <tr class="hover:bg-slate-900/40">
+                                                <td class="px-6 py-4 font-mono text-brand-green font-bold text-sm">${c.code}</td>
+                                                <td class="px-6 py-4 text-white font-semibold">${c.name}</td>
+                                                <td class="px-6 py-4 font-mono text-amber-400 font-bold">${c.pin}</td>
+                                                <td class="px-6 py-4 text-slate-400">${c.currency}</td>
+                                                <td class="px-6 py-4 text-right">
+                                                    <button onclick="simulateClientLogin('${c.code}', '${c.pin}')" class="bg-slate-900 hover:bg-slate-800 text-blue-400 px-2 py-1 rounded border border-slate-800 font-semibold text-xs">Accéder</button>
+                                                    <button onclick="handleDeleteClient('${c.code}')" class="text-slate-400 hover:text-brand-red p-1"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </main>
+                    </div>
+                </div>
+
+                <!-- MODAL: ADD CLIENT -->
+                <div id="addClientModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div class="fixed inset-0 transition-opacity bg-slate-800 bg-opacity-75" onclick="closeModal('addClientModal')"></div>
+                        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div class="inline-block align-bottom bg-slate-950 border border-slate-800 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-6 text-slate-200">
+                            <h3 class="text-lg font-bold text-white mb-4">Créer un nouveau compte client</h3>
+                            <form id="addClientForm" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Code Client Unique *</label>
+                                    <input type="text" id="newClientCode" required class="w-full bg-slate-900 border border-slate-800 text-white rounded-lg p-2.5 text-sm focus:ring-brand-blue" placeholder="Ex: 4444">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Nom Complet *</label>
+                                    <input type="text" id="newClientName" required class="w-full bg-slate-900 border border-slate-800 text-white rounded-lg p-2.5 text-sm focus:ring-brand-blue" placeholder="Ex: Fatoumata">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Code PIN (4 chiffres) *</label>
+                                    <input type="password" id="newClientPin" maxlength="4" required class="w-full bg-slate-900 border border-slate-800 text-white rounded-lg p-2.5 text-sm focus:ring-brand-blue" placeholder="Ex: 1234">
+                                </div>
+                                <div class="pt-2 flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal('addClientModal')" class="bg-slate-900 text-slate-300 hover:bg-slate-800 px-4 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+                                    <button type="submit" class="bg-blue-800 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">Créer le client</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            document.getElementById('addClientForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const code = document.getElementById('newClientCode').value.trim();
+                const name = document.getElementById('newClientName').value.trim();
+                const pin = document.getElementById('newClientPin').value.trim();
+
+                await window.BizTrackDB.addClient({
+                    code: code,
+                    name: name,
+                    pin: pin,
+                    currency: "FCFA (XOF)"
+                });
+
+                closeModal('addClientModal');
+                showAdminPanel();
+            });
+        }
+
+        async function simulateClientLogin(code, pin) {
+            await runLogin(code, pin);
+        }
+
+        async function handleDeleteClient(code) {
+            if (confirm(`Supprimer le client ${code} ?`)) {
+                await window.BizTrackDB.deleteClient(code);
+                showAdminPanel();
+            }
+        }
+
+
+        // --- INIT APP ---
+        async function initApp() {
+            seedLocalDataIfRequired();
+
+            const storedUser = localStorage.getItem('biztrack_current_user');
+            if (storedUser) {
+                currentUser = JSON.parse(storedUser);
+                if (currentUser.role === 'admin') {
+                    showAdminPanel();
+                } else {
+                    const clientInfo = await window.BizTrackDB.getClientData(currentUser.code);
+                    if (clientInfo.activities.length === 0) {
+                        showWizardPanel();
+                    } else {
+                        showDashboard();
+                    }
+                }
+            } else {
+                showLoginScreen();
+            }
+        }
+
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
